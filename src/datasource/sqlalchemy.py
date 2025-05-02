@@ -4,5 +4,5 @@ from sqlalchemy.orm import sessionmaker
 
 # --- SQLAlchemy Setup ---
 Base = declarative_base()
-engine = create_engine("sqlite:///tenants.db", echo=False)  # Use SQLite for simplicity; switch to PostgreSQL for production
+engine = create_engine("postgresql://postgres:postgres@localhost:5432/chatpdf", echo=False)
 SessionLocal = sessionmaker(bind=engine)
