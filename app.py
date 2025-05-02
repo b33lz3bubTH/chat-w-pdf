@@ -1,64 +1,57 @@
-
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
 from src.core.tenant.service import TenantService, PDFProcessingService
 from src.datasource.vector import VectorStoreService
 
-class PDFStoreApp:
-    def __init__(self):
-        self.tenant_service = TenantService()
-        self.pdf_service = PDFProcessingService()
-        self.vector_service = VectorStoreService()
+app = FastAPI(
+    title="Multi-Tenant PDF Store",
+    description="Manage tenants, upload PDFs, and query documents.",
+    version="1.0.0"
+)
 
-    def run(self):
-        print("\n📄 Multi-Tenant PDF Store (SQLAlchemy)")
-        print("Type 'exit' to quit.\n")
+tenant_service = TenantService()
+pdf_service = PDFProcessingService()
+vector_service = VectorStoreService()
 
-        while True:
-            print("1. Create Tenant")
-            print("2. Upload PDF")
-            print("3. Query Documents")
-            print("4. Exit")
-            choice = input("\nSelect an option: ")
+class TenantCreateRequest(BaseModel):
+    name: str
 
-            if choice == "1":
-                tenant_name = input("Enter tenant name: ")
-                tenant_id = self.tenant_service.create_tenant(tenant_name)
-                print(f"Tenant created with ID: {tenant_id}")
+class PDFUploadRequest(BaseModel):
+    pdf_url: str
 
-            elif choice == "2":
-                tenant_id = input("Enter tenant ID: ")
-                if not self.tenant_service.get_tenant(tenant_id):
-                    print("Invalid tenant ID.")
-                    continue
-                pdf_url = input("Enter PDF URL: ")
-                try:
-                    documents = self.pdf_service.process_pdf(pdf_url, tenant_id)
-                    self.vector_service.store_documents(tenant_id, documents)
-                    print("PDF processed and stored successfully.")
-                except Exception as e:
-                    print(f"Error processing PDF: {e}")
+class QueryRequest(BaseModel):
+    query: str
+    top_k: int = 5
 
-            elif choice == "3":
-                tenant_id = input("Enter tenant ID: ")
-                if not self.tenant_service.get_tenant(tenant_id):
-                    print("Invalid tenant ID.")
-                    continue
-                query = input("Enter your query: ")
-                results = self.vector_service.retrieve_documents(tenant_id, query)
-                if not results:
-                    print("\n❌ No relevant documents found.\n")
-                else:
-                    print("\n📚 Retrieved Documents:")
-                    for doc in results:
-                        print(f"• Document ID: {doc.metadata['document_id']}")
-                        print(f"  Content: {doc.page_content[:100]}...\n")
+@app.post("/tenants/")
+def create_tenant(request: TenantCreateRequest):
+    tenant_id = tenant_service.create_tenant(request.name)
+    return {"tenant_id": tenant_id, "message": "Tenant created successfully."}
 
-            elif choice == "4":
-                print("👋 Bye!")
-                break
+@app.post("/tenants/{tenant_id}/pdfs/")
+def upload_pdf(tenant_id: str, request: PDFUploadRequest):
+    if not tenant_service.get_tenant(tenant_id):
+        raise HTTPException(status_code=404, detail="Tenant not found.")
 
-            else:
-                print("Invalid option.")
+    try:
+        documents = pdf_service.process_pdf(request.pdf_url, tenant_id)
+        vector_service.store_documents(tenant_id, documents)
+        return {"message": "PDF processed and stored successfully."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error processing PDF: {str(e)}")
+
+@app.post("/tenants/{tenant_id}/query/")
+def query_documents(tenant_id: str, request: QueryRequest):
+    if not tenant_service.get_tenant(tenant_id):
+        raise HTTPException(status_code=404, detail="Tenant not found.")
+
+    results = vector_service.retrieve_documents(tenant_id, request.query, request.top_k)
+    if not results:
+        return {"message": "No relevant documents found.", "results": []}
+    
+    return {"results": results}
+
 
 if __name__ == "__main__":
-    app = PDFStoreApp()
-    app.run()
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=9900)
