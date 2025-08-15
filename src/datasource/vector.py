@@ -1,9 +1,9 @@
 from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain.vectorstores import Chroma
+from langchain_community.vectorstores import Chroma
 
 class VectorStoreService:
     def __init__(self):
-        self.embedding_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+        self.embedding_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2", model_kwargs={"device": "cpu"})
         self.persist_directory = "db"
 
     def store_documents(self, tenant_id: str, documents: list):
